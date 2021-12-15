@@ -34,7 +34,6 @@ class transformerDataset(Dataset):
         label = self.labels[idx]
 
         image = rearrange(image, '(h p1) (w p2) c -> (h w) (p1 p2 c)', p1 = patch_size, p2 = patch_size)
-        # image = rearrange(image, '(h p1) (w p2) c -> (h p1) (w p2) c', p1 = patch_size, p2 = patch_size)
         print(self.image_paths[idx])
         return (image, label)
         
