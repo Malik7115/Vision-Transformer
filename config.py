@@ -9,5 +9,8 @@ attention_heads = 2
 
 # Training Params
 shuffle = True
-batch_size = 32
-lr = 1e-5
+batch_size = 16
+lr = 1e-4
+total_epochs = 64
+
+

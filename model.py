@@ -2,7 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from config import totalClasses, attention_heads
+from einops import rearrange, repeat
+
+from config import totalClasses, attention_heads, batch_size
 
 class SelfAttention(nn.Module):
     def __init__(self, embed_dim):
@@ -25,18 +27,17 @@ class SelfAttention(nn.Module):
 
         attn_weights = torch.bmm(attn_scores, V)
 
-        print(attn_scores)
         return attn_weights
 
 class MLP(nn.Module):
     def __init__(self):
         super().__init__()
-        self.fc1  = nn.Linear(1200, 2)
-        self.soft = nn.Softmax(dim = -1)
+        self.fc1  = nn.Linear(1200, 512)
+        self.fc2  = nn.Linear(512, 2)
     
     def forward(self, x):
         x = self.fc1(x)
-        x = self.soft(x)
+        x = self.fc2(x)
         return x
         
 
@@ -45,7 +46,9 @@ class ViT(nn.Module):
     def __init__(self):
         super().__init__()
         self.classes     = totalClasses
-        self.classEmbed  = nn.Embedding(self.classes, 150)
+        # self.classEmbed  = nn.Embedding(self.classes, 150)
+        # self.classEmbed  = 
+        self.classEmbed  = repeat(nn.Parameter(torch.randn(1,150)), '() e -> b e', b=batch_size)
         self.posEmbed    = nn.Embedding(100+1, 150)
         self.LinearProj  = torch.nn.Linear(300, 150)
         self.LinearProj1 = torch.nn.Linear(900, 300)
@@ -60,25 +63,24 @@ class ViT(nn.Module):
         self.MLP = MLP()
 
 
-    def forward(self, x, y): # x are flattened patches and y is label
+    def forward(self, x): # x are flattened patches and y is label
 
-        x = torch.tensor(x, dtype=torch.float32)
-        y = torch.tensor(y)
+        x = x.type(torch.float32)
         x = self.LinearProj(x) # 100,150
+        x = nn.functional.relu(x)
 
+        posEmbeddings  = self.posEmbed(torch.tensor(range(101)).repeat(16,1)) # 101,150
 
-        posEmbeddings  = self.posEmbed(torch.tensor(range(101))) # 101,150
-        classEmbedding = self.classEmbed(y) # 0,150
+        
+        classEmbedding = torch.cat((self.classEmbed, posEmbeddings[:,0,:]), dim = -1) # 0,300
+        x = torch.cat((x, posEmbeddings[:,1:,:]), dim = -1) # 100,300
 
-        classEmbedding = torch.cat((classEmbedding, posEmbeddings[0])) # 0,300
-        x = torch.cat((x, posEmbeddings[1:,:]), dim = 1) # 100,300
+        x = torch.cat((classEmbedding.unsqueeze(dim = 1), x), dim = 1) # 101,300
 
-        x = torch.cat((classEmbedding.unsqueeze(dim = 0), x), dim = 0) # 101,300
-
-        skip1 = torch.tensor(x.clone().detach()).unsqueeze(dim = 0)
+        skip1 = x.clone().detach()
         MSA_outputs = []
 
-        x = x.unsqueeze(dim = 0) # remove after checking
+        # x = x.unsqueeze(dim = 0) # remove after checking
 
         for SA in self.MSA:
             MSA_outputs.append(SA(x))
@@ -88,12 +90,15 @@ class ViT(nn.Module):
         x = self.batchNorm(MSA_outputs)
         x = torch.cat((x, skip1), dim = -1)
 
-        skip2 = torch.tensor(x.clone().detach())
+        skip2 = x.clone().detach()
 
         x = self.LinearProj1(x)
+        x = nn.functional.relu(x)
+
         x = self.batchNorm1(x)
         x = torch.cat((x,skip2), dim = -1)
+        
 
-        x = self.MLP(x)
+        x = self.MLP(x[:,0,:])
 
         return x

@@ -31,10 +31,10 @@ class transformerDataset(Dataset):
     def __getitem__(self, idx):
         image = cv2.imread(self.image_paths[idx])
         image = cv2.resize(image, (100,100))
+        image = image/255
         label = self.labels[idx]
 
         image = rearrange(image, '(h p1) (w p2) c -> (h w) (p1 p2 c)', p1 = patch_size, p2 = patch_size)
-        print(self.image_paths[idx])
         return (image, label)
         
 
