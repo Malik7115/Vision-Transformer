@@ -1,10 +1,13 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from math import sqrt
 
 from einops import rearrange, repeat
 
-from config import totalClasses, attention_heads, batch_size
+from config import *
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class SelfAttention(nn.Module):
     def __init__(self, embed_dim):
@@ -21,7 +24,7 @@ class SelfAttention(nn.Module):
         V = self.V(x)
 
         #transpose K for dot product with Q
-        attn_scores = torch.bmm(Q, K.transpose(1,2)) 
+        attn_scores = torch.bmm(Q, K.transpose(1,2)) / sqrt(embedding_dims)
         #Softmax across embedding (column) dim
         attn_scores  = attn_scores.softmax(dim = 2)
 
@@ -33,7 +36,7 @@ class MLP(nn.Module):
     def __init__(self):
         super().__init__()
         self.fc1  = nn.Linear(1200, 512)
-        self.fc2  = nn.Linear(512, 2)
+        self.fc2  = nn.Linear(512, totalClasses)
     
     def forward(self, x):
         x = self.fc1(x)
@@ -48,17 +51,17 @@ class ViT(nn.Module):
         self.classes     = totalClasses
         # self.classEmbed  = nn.Embedding(self.classes, 150)
         # self.classEmbed  = 
-        self.classEmbed  = repeat(nn.Parameter(torch.randn(1,150)), '() e -> b e', b=batch_size)
-        self.posEmbed    = nn.Embedding(100+1, 150)
-        self.LinearProj  = torch.nn.Linear(300, 150)
+        self.classEmbed  = repeat(nn.Parameter(torch.randn(1,linear_dim).to(device)), '() e -> b e', b=batch_size)
+        self.posEmbed    = nn.Embedding((num_patches) + 1, linear_dim)
+        self.LinearProj  = torch.nn.Linear((patch_size**2) * num_channels, linear_dim)
         self.LinearProj1 = torch.nn.Linear(900, 300)
 
-        self.batchNorm    = nn.BatchNorm1d(101)
-        self.batchNorm1   = nn.BatchNorm1d(101)
+        self.batchNorm    = nn.BatchNorm1d((num_patches) + 1)
+        self.batchNorm1   = nn.BatchNorm1d((num_patches) + 1)
 
         self.MSA = []
         for i in range(attention_heads):
-            self.MSA.append(SelfAttention(300))
+            self.MSA.append(SelfAttention(300).to(device))
 
         self.MLP = MLP()
 
@@ -69,7 +72,8 @@ class ViT(nn.Module):
         x = self.LinearProj(x) # 100,150
         x = nn.functional.relu(x)
 
-        posEmbeddings  = self.posEmbed(torch.tensor(range(101)).repeat(16,1)) # 101,150
+        num_patches    = x.size(1)
+        posEmbeddings  = self.posEmbed(torch.tensor(range(num_patches + 1)).to(device).repeat(x.size(0),1)) # 101,150
 
         
         classEmbedding = torch.cat((self.classEmbed, posEmbeddings[:,0,:]), dim = -1) # 0,300
