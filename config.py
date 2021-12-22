@@ -1,12 +1,9 @@
-# Dataset Params
+# Dataset 
 dataset_path = '/home/ibrahim/Projects/Datasets/ViT'
-class_maps = {0 : "butterfly", 1 : "ant"}
 patch_size = 7
 num_patches = 16
 totalClasses = 10
 num_channels = 1
-
-
 use_mnist = True
 
 # Model Params
@@ -20,6 +17,7 @@ linear1_dim     = 150
 shuffle = True
 batch_size = 100
 lr = 1e-4
-total_epochs = 60
+total_epochs = 200
+test_interval = 2
 
 

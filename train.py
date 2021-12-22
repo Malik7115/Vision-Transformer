@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import DataLoader
 from data import transformerDataset
 from tqdm import tqdm
-from config import dataset_path, batch_size, lr, class_maps, total_epochs, use_mnist, patch_size
+from config import dataset_path, batch_size, lr, class_maps, total_epochs, use_mnist, patch_size, test_interval
 from model import ViT
 
 from torchvision import datasets
@@ -35,8 +35,6 @@ else:
     train_dataloader = DataLoader(train, batch_size = batch_size, shuffle = True, num_workers = 4)
     test_dataloader  = DataLoader(test,  batch_size = batch_size, shuffle = True, num_workers = 4)
 
-test_batch = next(iter(test_dataloader))
-
 model = ViT().to(device)
 totalParams = sum(dict((p.data_ptr(), p.numel()) for p in model.parameters()).values())
 
@@ -45,11 +43,13 @@ optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
 
 for epoch in tqdm(range(total_epochs)):
+    acc = 0
+    train_acc = 0
     running_loss = 0
+
     for patch, label in train_dataloader:
         if (use_mnist):
             patch    = rearrange(patch, 'b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_size, p2 = patch_size)
-            test_out = rearrange(test_batch[0], 'b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_size, p2 = patch_size)
 
         patch = patch.to(device)
         label = label.to(device)
@@ -59,32 +59,25 @@ for epoch in tqdm(range(total_epochs)):
         loss   = criterion(output, label)
         loss.backward()
         optimizer.step()
+        running_loss += loss.item() * patch.size(0)
 
-        # test_out = model(test_batch[0].to(device))
-        resutls = model(test_out.to(device))
+        resutls = output
         resutls = torch.nn.functional.softmax(resutls)
         resutls = torch.max(resutls, dim = -1)[1]
-        acc = torch.sum((resutls == test_batch[1].to(device))/batch_size)
+        train_acc += torch.sum((resutls == label.to(device))/batch_size)
 
-        
-        running_loss += loss.item() * patch.size(0)
-        
-    running_loss = running_loss / len(train_dataloader)
+    running_loss = running_loss/len(train_dataloader)
+    train_acc    = train_acc/len(train_dataloader)
+
+    if(epoch % test_interval == 0):
+        for test_batch in test_dataloader:
+            test_out = rearrange(test_batch[0], 'b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_size, p2 = patch_size)
+            resutls = model(test_out.to(device))
+            resutls = torch.nn.functional.softmax(resutls)
+            resutls = torch.max(resutls, dim = -1)[1]
+            acc += torch.sum((resutls == test_batch[1].to(device))/batch_size)
+        running_acc  = acc/len(test_dataloader)
+        print("loss: ",running_loss, "train acc", train_acc, "test acc: ", running_acc)
     
-    print("loss: ",running_loss, "accuracy: ", acc)
-    
-    
-print(">>>>>>>>>>>>>>>>>>>> RESULTS >>>>>>>>>>>>>>")
-print(test_batch[1])
-test_out = model(test_batch[1])
-resutls = torch.nn.functional.softmax(test_out)
-print(torch.max(resutls, dim = -1)[1])
-
-print(">>>>>>>>>>>> ACC <<<<<<<<<<<<<<")
-print(torch.sum(resutls == test_batch[1])/len(100))
-
-
-
-print(len(train))
-print(len(test))
-# train_loader = DataLoader(dataset)
+    else:
+        print("loss: ",running_loss, "train acc", train_acc)

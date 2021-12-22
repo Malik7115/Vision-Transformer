@@ -27,7 +27,6 @@ class SelfAttention(nn.Module):
         attn_scores = torch.bmm(Q, K.transpose(1,2)) / sqrt(embedding_dims)
         #Softmax across embedding (column) dim
         attn_scores  = attn_scores.softmax(dim = 2)
-
         attn_weights = torch.bmm(attn_scores, V)
 
         return attn_weights
@@ -43,14 +42,10 @@ class MLP(nn.Module):
         x = self.fc2(x)
         return x
         
-
-
 class ViT(nn.Module):
     def __init__(self):
         super().__init__()
         self.classes     = totalClasses
-        # self.classEmbed  = nn.Embedding(self.classes, 150)
-        # self.classEmbed  = 
         self.classEmbed  = repeat(nn.Parameter(torch.randn(1,linear_dim).to(device)), '() e -> b e', b=batch_size)
         self.posEmbed    = nn.Embedding((num_patches) + 1, linear_dim)
         self.LinearProj  = torch.nn.Linear((patch_size**2) * num_channels, linear_dim)
@@ -66,9 +61,10 @@ class ViT(nn.Module):
         self.MLP = MLP()
 
 
-    def forward(self, x): # x are flattened patches and y is label
-
+    def forward(self, x): 
         x = x.type(torch.float32)
+        # if(x.size(0) < batch_size):
+        #     x = x.repeat(batch_size, 1)
         x = self.LinearProj(x) # 100,150
         x = nn.functional.relu(x)
 
@@ -102,7 +98,6 @@ class ViT(nn.Module):
         x = self.batchNorm1(x)
         x = torch.cat((x,skip2), dim = -1)
         
-
         x = self.MLP(x[:,0,:])
 
         return x
